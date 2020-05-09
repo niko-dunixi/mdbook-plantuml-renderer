@@ -26,4 +26,5 @@ pulldown-cmark-to-cmark = "4.0.0"
 markedit = "0.3.0"
 
 log = "0.4.8"
-simple-logging = "2.0.2"
+fern = "0.5"
+chrono = "0.4.11"
