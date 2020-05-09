@@ -859,6 +859,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
 
 [[package]]
+name = "markedit"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a595a0636f9e2b0006650839d64b4ee210e68ca5614084c2ec79fae79a261ea"
+dependencies = [
+ "pulldown-cmark 0.7.1",
+]
+
+[[package]]
 name = "markup5ever"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -914,7 +923,7 @@ dependencies = [
  "memchr",
  "notify",
  "open",
- "pulldown-cmark",
+ "pulldown-cmark 0.6.1",
  "regex",
  "serde",
  "serde_derive",
@@ -932,10 +941,15 @@ name = "mdbook-plantuml-renderer"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "log 0.4.8",
+ "markedit",
  "mdbook",
+ "pulldown-cmark 0.7.1",
+ "pulldown-cmark-to-cmark",
  "serde",
  "serde_derive",
  "serde_json",
+ "simple-logging",
 ]
 
 [[package]]
@@ -1293,6 +1307,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulldown-cmark"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e142c3b8f49d2200605ee6ba0b1d757310e9e7a72afe78c36ee2ef67300ee00"
+dependencies = [
+ "bitflags",
+ "getopts",
+ "memchr",
+ "unicase 2.6.0",
+]
+
+[[package]]
+name = "pulldown-cmark-to-cmark"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f80851bae4714721298e6d05a0e1454055985ce5d82c4d01bf6905f8c5a382a"
+dependencies = [
+ "pulldown-cmark 0.7.1",
+]
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1604,6 +1639,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7fdf1b9db47230893d76faad238fd6097fd6d6a9245cd7a4d90dbd639536bbd2"
 
 [[package]]
+name = "simple-logging"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b00d48e85675326bb182a2286ea7c1a0b264333ae10f27a937a72be08628b542"
+dependencies = [
+ "lazy_static",
+ "log 0.4.8",
+ "thread-id",
+]
+
+[[package]]
 name = "siphasher"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1763,6 +1809,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
 dependencies = [
  "unicode-width",
+]
+
+[[package]]
+name = "thread-id"
+version = "3.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7fbf4c9d56b320106cd64fd024dadfa0be7cb4706725fc44a7d7ce952d820c1"
+dependencies = [
+ "libc",
+ "redox_syscall",
+ "winapi 0.3.8",
 ]
 
 [[package]]
