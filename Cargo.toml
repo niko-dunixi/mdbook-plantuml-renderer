@@ -23,7 +23,8 @@ serde_derive = "1.0.104"
 
 pulldown-cmark = "0.7.1"
 pulldown-cmark-to-cmark = "4.0.0"
-markedit = "0.3.0"
+# markedit = "0.3.0"
+markedit = { git = "https://github.com/Michael-F-Bryan/markedit.git", rev = "e6c5fe" }
 
 log = "0.4.8"
 fern = "0.5"

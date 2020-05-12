@@ -1,18 +1,21 @@
-use std::io::{Read, stdin, stdout, stderr};
-use std::path::{Path, PathBuf};
 use std::fs::create_dir_all;
+use std::io::{stderr, stdin, stdout, Read};
+use std::path::{Path, PathBuf};
 
-use log::{info, trace, warn};
 use clap::{App, Arg, ArgMatches, SubCommand};
+use log::{info, trace, warn};
 
+use log::LevelFilter;
 use mdbook::book::{Book, BookItem};
 use mdbook::errors::Error;
 use mdbook::preprocess::{CmdPreprocessor, Preprocessor, PreprocessorContext};
-use log::LevelFilter;
 
-use pulldown_cmark::{CowStr, Parser, Event, Tag, CodeBlockKind, LinkType};
+use markedit::{rewrite_between, Matcher, Rewriter};
+use pulldown_cmark::{CodeBlockKind, CowStr, Event, LinkType, Parser, Tag};
 use pulldown_cmark_to_cmark::cmark;
-use markedit::{Matcher, Rewriter};
+// use markedit::rewriter::{rewrite_between};
+
+static PLANTUML_RENDERABLE_LANGUAGE: &str = "plantuml,render";
 
 fn main() -> Result<(), Box<std::error::Error>> {
     fern::Dispatch::new()
@@ -64,8 +67,7 @@ fn get_clap() -> App<'static, 'static> {
 }
 
 #[derive(Default)]
-struct plantuml_renderer_preprocessor {
-}
+struct plantuml_renderer_preprocessor {}
 
 impl Preprocessor for plantuml_renderer_preprocessor {
     fn name(&self) -> &str {
@@ -82,17 +84,17 @@ impl Preprocessor for plantuml_renderer_preprocessor {
 
                 let events_iterator = markedit::parse(&current_chapter.content);
 
-                let matcher = plantuml_codeblock_matcher::default().falling_edge();
-                let rewriter = markedit::insert_markdown_before("(look, plantuml lol)", matcher);
-
-                let mutated_events: Vec<_> = markedit::rewrite(events_iterator, rewriter).collect();
+                let mutated_events: Vec<_> = rewrite_between(
+                    events_iterator,
+                    renderable_plantuml_start,
+                    renderable_plantuml_end,
+                    uppercase_all_text,
+                ).collect();
 
                 let mut content_buffer = String::with_capacity(current_chapter.content.len());
                 current_chapter.content = cmark(mutated_events.iter(), &mut content_buffer, None)
                     .map(|_| content_buffer)
-                    .map_err(|err| {
-                        Error::from(format!("Markdown serialization failed: {}", err))
-                    })
+                    .map_err(|err| Error::from(format!("Markdown serialization failed: {}", err)))
                     .unwrap();
             }
         });
@@ -104,32 +106,29 @@ impl Preprocessor for plantuml_renderer_preprocessor {
     }
 }
 
-#[derive(Default)]
-struct plantuml_codeblock_matcher {
-    is_plantuml: bool,
-}
-
-impl Matcher for plantuml_codeblock_matcher {
-    fn matches_event(&mut self, event: &pulldown_cmark::Event<'_>) -> bool {
-        match event {
-            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(codeblock_language))) if self.is_renderable_plantuml(codeblock_language) => {
-                info!("Found renderable plantuml start");
-                self.is_plantuml = true;
-            },
-            Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(codeblock_language))) if self.is_renderable_plantuml(codeblock_language) => {
-                info!("Found renderable plantuml end");
-                self.is_plantuml = false;
-                return true
-            }
-            _ => {},
+fn renderable_plantuml_start(event: &Event<'_>) -> bool {
+    match event {
+        Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(language))) => {
+            language.to_string() == PLANTUML_RENDERABLE_LANGUAGE.to_string()
         }
-        self.is_plantuml
+        _ => false,
     }
 }
 
-impl plantuml_codeblock_matcher {
-    fn is_renderable_plantuml(&self, value: &pulldown_cmark::CowStr<>) -> bool{
-        value.to_string() == "plantuml,render".to_string()
+fn renderable_plantuml_end(event: &Event<'_>) -> bool {
+    match event {
+        Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(language))) => {
+            language.to_string() == PLANTUML_RENDERABLE_LANGUAGE.to_string()
+        }
+        _ => false,
+    }
+}
+
+fn uppercase_all_text<'src>(events: &mut Vec<Event<'src>>) {
+    for event in events {
+        if let Event::Text(ref mut text) = event {
+            *text = text.to_uppercase().into();
+        }
     }
 }
 
