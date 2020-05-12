@@ -79,21 +79,58 @@ impl Preprocessor for plantuml_renderer_preprocessor {
     }
 
     fn run(&self, context: &PreprocessorContext, mut book: Book) -> Result<Book, Error> {
-        let plantuml_build_directory = determine_plantuml_output_directory(context);
+        let plantuml_build_directory = determine_plantuml_output_directory(&context);
         create_dir_all(&plantuml_build_directory)?;
 
         book.for_each_mut(|current_item: &mut BookItem| {
             if let BookItem::Chapter(ref mut current_chapter) = *current_item {
-                info!("Working Chapter: {}", current_chapter.name);
+                info!("Working Chapter: {}", &current_chapter.name);
 
                 let events_iterator = markedit::parse(&current_chapter.content);
 
-                let plantuml_renderer = create_render_plantuml_renderer(&plantuml_build_directory);
+                // let plantuml_renderer = create_render_plantuml_renderer(&plantuml_build_directory);
                 let mutated_events_iterator = rewrite_between(
                     events_iterator,
                     renderable_plantuml_start,
                     renderable_plantuml_end,
-                    plantuml_renderer,
+                    |events: &mut Vec<Event<'_>>| {
+                        // Intentionally consume and remove all events by mapping them into
+                        // a single string of code. This helps strip out the opening/closing
+                        // code-fences before and after the codeblock.
+                        let plantuml_code = events
+                            .iter()
+                            .map(|e| match e {
+                                Event::Text(plantuml_text) => plantuml_text.to_string(),
+                                _ => "".into(),
+                            })
+                            .collect::<String>();
+                        trace!("Found plantuml:\n{}", plantuml_code);
+
+                        let mut hasher = Sha1::new();
+                        hasher.input_str(&plantuml_code);
+                        let plantuml_hash_sum = hasher.result_str();
+                        debug!("Plantuml SHA1 hash sum: {}", &plantuml_hash_sum);
+                        let mut plantuml_svg = PathBuf::new();
+                        plantuml_svg.push(&plantuml_build_directory);
+                        plantuml_svg.push(&plantuml_hash_sum);
+                        plantuml_svg.set_extension("svg");
+                        debug!("Filename: {}", plantuml_svg.to_str().unwrap());
+
+                        let url = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/1024px-Cat03.jpg\n";
+                        let empty_str = "";
+                        events.push(Event::Start(Tag::Image(
+                            LinkType::Inline,
+                            CowStr::Borrowed(url),
+                            CowStr::Borrowed(empty_str),
+                        )));
+                        events.push(Event::End(Tag::Image(
+                            LinkType::Inline,
+                            CowStr::Borrowed(url),
+                            CowStr::Borrowed(empty_str),
+                        )));
+                        events.remove(1);
+                        events.push(Event::SoftBreak);
+                    }
                 );
 
                 let mut content_buffer = String::with_capacity(current_chapter.content.len());
@@ -127,54 +164,6 @@ fn renderable_plantuml_end(event: &Event<'_>) -> bool {
         }
         _ => false,
     }
-}
-
-fn create_render_plantuml_renderer<'src>(
-    render_directory: &std::path::Path,
-) -> Box<dyn Fn(&mut Vec<Event<'src>>)> {
-    Box::new(|events: &mut Vec<Event<'src>>| {
-        // Intentionally consume and remove all events by mapping them into
-        // a single string of code. This helps strip out the opening/closing
-        // code-fences before and after the codeblock.
-        let plantuml_code = events
-            .iter()
-            .map(|e| match e {
-                Event::Text(plantuml_text) => plantuml_text.to_string(),
-                _ => "".into(),
-            })
-            .collect::<String>();
-        trace!("Found plantuml:\n{}", plantuml_code);
-
-        let mut hasher = Sha1::new();
-        hasher.input_str(&plantuml_code);
-        let plantuml_hash_sum = hasher.result_str();
-        debug!("Plantuml SHA1 hash sum: {}", plantuml_hash_sum);
-
-        let url = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/1024px-Cat03.jpg\n";
-        let empty_str = "";
-        events.push(Event::Start(Tag::Image(
-            LinkType::Inline,
-            CowStr::Borrowed(url),
-            CowStr::Borrowed(empty_str),
-        )));
-        events.push(Event::End(Tag::Image(
-            LinkType::Inline,
-            CowStr::Borrowed(url),
-            CowStr::Borrowed(empty_str),
-        )));
-        events.remove(1);
-        events.push(Event::SoftBreak);
-
-        // for event in events {
-        //     if let Event::Text(ref mut plantuml_text) = event {
-
-        //         *plantuml_text = cow;
-        //         // *plantuml_text = CowStr::Inlined("AAAAAA".to_string());
-        //         // *plantuml_text = CowStr::borrow("AASA");
-        //         // *plantuml_text = render_directory.to_str().unwrap().to_string()
-        //     }
-        // }
-    })
 }
 
 /// Takes the context root of the book and concatinates the build directory.
