@@ -105,6 +105,7 @@ impl Preprocessor for PlantumlRendererPreprocessor {
                                 _ => "".into(),
                             })
                             .collect::<String>();
+                        events.clear();
                         trace!("Found plantuml:\n{}", plantuml_code);
                         // Generate the SHA sum. This lets us be lazy. If the diagram already exists
                         // it doesn't need to be re-created, merely referenced.
