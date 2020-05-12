@@ -131,17 +131,21 @@ impl Preprocessor for PlantumlRendererPreprocessor {
                             let mut puml_file = File::create(&puml_filename).unwrap();
                             write!(puml_file, "{}", plantuml_code);
                             // Call plantuml and generate the SVG
-                            let plantuml_command_output = Command::new("plantuml")
+                            let output = Command::new("/usr/local/bin/plantuml")
                                 .arg("-tsvg")
                                 .arg("-o")
                                 .arg(&plantuml_build_directory.to_str().unwrap())
                                 .arg(&puml_filename.to_str().unwrap())
                                 .output()
-                                .unwrap()
-                                .stdout;
+                                .expect("Failed to run PlantUML");
+                            debug!("PlantUML Exit Status: {}", output.status);
                             debug!(
-                                "PlantUML output: {}",
-                                String::from_utf8(plantuml_command_output).unwrap()
+                                "PlantUML stdout: {}",
+                                String::from_utf8(output.stdout).unwrap()
+                            );
+                            debug!(
+                                "PlantUML stderr: {}",
+                                String::from_utf8(output.stderr).unwrap()
                             );
                         }
                         // Create the relative filename to use, and then place it programatically
