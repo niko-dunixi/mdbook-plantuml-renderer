@@ -1,9 +1,11 @@
+extern crate crypto;
+
 use std::fs::create_dir_all;
 use std::io::{stderr, stdin, stdout, Read};
 use std::path::{Path, PathBuf};
 
 use clap::{App, Arg, ArgMatches, SubCommand};
-use log::{info, trace, warn};
+use log::{debug, info, trace, warn};
 
 use log::LevelFilter;
 use mdbook::book::{Book, BookItem};
@@ -13,7 +15,9 @@ use mdbook::preprocess::{CmdPreprocessor, Preprocessor, PreprocessorContext};
 use markedit::{rewrite_between, Matcher, Rewriter};
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, LinkType, Parser, Tag};
 use pulldown_cmark_to_cmark::cmark;
-// use markedit::rewriter::{rewrite_between};
+
+use crypto::digest::Digest;
+use crypto::sha1::Sha1;
 
 static PLANTUML_RENDERABLE_LANGUAGE: &str = "plantuml,render";
 
@@ -129,18 +133,35 @@ fn create_render_plantuml_renderer<'src>(
     render_directory: &std::path::Path,
 ) -> Box<dyn Fn(&mut Vec<Event<'src>>)> {
     Box::new(|events: &mut Vec<Event<'src>>| {
+        // Intentionally consume and remove all events by mapping them into
+        // a single string of code. This helps strip out the opening/closing
+        // code-fences before and after the codeblock.
+        let plantuml_code = events
+            .iter()
+            .map(|e| match e {
+                Event::Text(plantuml_text) => plantuml_text.to_string(),
+                _ => "".into(),
+            })
+            .collect::<String>();
+        trace!("Found plantuml:\n{}", plantuml_code);
+
+        let mut hasher = Sha1::new();
+        hasher.input_str(&plantuml_code);
+        let plantuml_hash_sum = hasher.result_str();
+        debug!("Plantuml SHA1 hash sum: {}", plantuml_hash_sum);
+
         let url = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/1024px-Cat03.jpg\n";
         let empty_str = "";
-        events[0] = Event::Start(Tag::Image(
+        events.push(Event::Start(Tag::Image(
             LinkType::Inline,
             CowStr::Borrowed(url),
             CowStr::Borrowed(empty_str),
-        ));
-        events[2] = Event::End(Tag::Image(
+        )));
+        events.push(Event::End(Tag::Image(
             LinkType::Inline,
             CowStr::Borrowed(url),
             CowStr::Borrowed(empty_str),
-        ));
+        )));
         events.remove(1);
         events.push(Event::SoftBreak);
 
