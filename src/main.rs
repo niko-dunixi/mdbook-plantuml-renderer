@@ -1,8 +1,9 @@
 extern crate crypto;
 
-use std::fs::create_dir_all;
-use std::io::{stderr, stdin, stdout, Read};
+use std::fs::{create_dir_all, File};
+use std::io::{stderr, stdin, stdout, Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 use log::{debug, info, trace, warn};
@@ -37,7 +38,7 @@ fn main() -> Result<(), Box<std::error::Error>> {
         // .chain(fern::log_file("output.log")?)
         .apply()?;
 
-    let preprocessor = plantuml_renderer_preprocessor::default();
+    let preprocessor = PlantumlRendererPreprocessor::default();
     let matches = get_clap().get_matches();
     if let Some(support_subcommand) = matches.subcommand_matches("supports") {
         // if let Some(renderer_argument) = support_subcommand.args.get("renderer") {
@@ -71,9 +72,9 @@ fn get_clap() -> App<'static, 'static> {
 }
 
 #[derive(Default)]
-struct plantuml_renderer_preprocessor {}
+struct PlantumlRendererPreprocessor {}
 
-impl Preprocessor for plantuml_renderer_preprocessor {
+impl Preprocessor for PlantumlRendererPreprocessor {
     fn name(&self) -> &str {
         "plantuml-renderer"
     }
@@ -105,32 +106,58 @@ impl Preprocessor for plantuml_renderer_preprocessor {
                             })
                             .collect::<String>();
                         trace!("Found plantuml:\n{}", plantuml_code);
-
+                        // Generate the SHA sum. This lets us be lazy. If the diagram already exists
+                        // it doesn't need to be re-created, merely referenced.
                         let mut hasher = Sha1::new();
                         hasher.input_str(&plantuml_code);
                         let plantuml_hash_sum = hasher.result_str();
                         debug!("Plantuml SHA1 hash sum: {}", &plantuml_hash_sum);
-                        let mut plantuml_svg = PathBuf::new();
-                        plantuml_svg.push(&plantuml_build_directory);
-                        plantuml_svg.push(&plantuml_hash_sum);
-                        plantuml_svg.set_extension("svg");
-                        debug!("Filename: {}", plantuml_svg.to_str().unwrap());
-
-                        let url = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/1024px-Cat03.jpg\n";
+                        let mut plantuml_svg_filename = PathBuf::new();
+                        plantuml_svg_filename.push(&plantuml_build_directory);
+                        plantuml_svg_filename.push(&plantuml_hash_sum);
+                        plantuml_svg_filename.set_extension("svg");
+                        debug!("Filename: {}", plantuml_svg_filename.to_str().unwrap());
+                        // If the SVG doesn't exist, dump the PUML file for plantuml to parse
+                        if !&plantuml_svg_filename.exists() {
+                            let mut puml_filename = PathBuf::new();
+                            puml_filename.push(&plantuml_build_directory);
+                            puml_filename.push(&plantuml_hash_sum);
+                            puml_filename.set_extension("puml");
+                            debug!(
+                                "SVG doesn't exist, writing PUML data: {}",
+                                puml_filename.to_str().unwrap()
+                            );
+                            let mut puml_file = File::create(&puml_filename).unwrap();
+                            write!(puml_file, "{}", plantuml_code);
+                            // Call plantuml and generate the SVG
+                            let plantuml_command_output = Command::new("plantuml")
+                                .arg("-tsvg")
+                                .arg("-o")
+                                .arg(&plantuml_build_directory.to_str().unwrap())
+                                .arg(&puml_filename.to_str().unwrap())
+                                .output()
+                                .unwrap()
+                                .stdout;
+                            debug!(
+                                "PlantUML output: {}",
+                                String::from_utf8(plantuml_command_output).unwrap()
+                            );
+                        }
+                        // Create the relative filename to use, and then place it programatically
+                        // as an image to be re-introduced to the mdbook
                         let empty_str = "";
                         events.push(Event::Start(Tag::Image(
                             LinkType::Inline,
-                            CowStr::Borrowed(url),
+                            CowStr::Boxed(plantuml_svg_filename.to_str().unwrap().into()),
                             CowStr::Borrowed(empty_str),
                         )));
                         events.push(Event::End(Tag::Image(
                             LinkType::Inline,
-                            CowStr::Borrowed(url),
+                            CowStr::Boxed(plantuml_svg_filename.to_str().unwrap().into()),
                             CowStr::Borrowed(empty_str),
                         )));
-                        events.remove(1);
                         events.push(Event::SoftBreak);
-                    }
+                    },
                 );
 
                 let mut content_buffer = String::with_capacity(current_chapter.content.len());
