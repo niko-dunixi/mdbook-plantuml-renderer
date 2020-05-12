@@ -76,7 +76,7 @@ impl Preprocessor for plantuml_renderer_preprocessor {
 
     fn run(&self, context: &PreprocessorContext, mut book: Book) -> Result<Book, Error> {
         let plantuml_build_directory = determine_plantuml_output_directory(context);
-        create_dir_all(plantuml_build_directory)?;
+        create_dir_all(&plantuml_build_directory)?;
 
         book.for_each_mut(|current_item: &mut BookItem| {
             if let BookItem::Chapter(ref mut current_chapter) = *current_item {
@@ -84,15 +84,16 @@ impl Preprocessor for plantuml_renderer_preprocessor {
 
                 let events_iterator = markedit::parse(&current_chapter.content);
 
-                let mutated_events: Vec<_> = rewrite_between(
+                let plantuml_renderer = create_render_plantuml_renderer(&plantuml_build_directory);
+                let mutated_events_iterator = rewrite_between(
                     events_iterator,
                     renderable_plantuml_start,
                     renderable_plantuml_end,
-                    uppercase_all_text,
-                ).collect();
+                    plantuml_renderer,
+                );
 
                 let mut content_buffer = String::with_capacity(current_chapter.content.len());
-                current_chapter.content = cmark(mutated_events.iter(), &mut content_buffer, None)
+                current_chapter.content = cmark(mutated_events_iterator, &mut content_buffer, None)
                     .map(|_| content_buffer)
                     .map_err(|err| Error::from(format!("Markdown serialization failed: {}", err)))
                     .unwrap();
@@ -124,12 +125,35 @@ fn renderable_plantuml_end(event: &Event<'_>) -> bool {
     }
 }
 
-fn uppercase_all_text<'src>(events: &mut Vec<Event<'src>>) {
-    for event in events {
-        if let Event::Text(ref mut text) = event {
-            *text = text.to_uppercase().into();
-        }
-    }
+fn create_render_plantuml_renderer<'src>(
+    render_directory: &std::path::Path,
+) -> Box<dyn Fn(&mut Vec<Event<'src>>)> {
+    Box::new(|events: &mut Vec<Event<'src>>| {
+        let url = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/1024px-Cat03.jpg\n";
+        let empty_str = "";
+        events[0] = Event::Start(Tag::Image(
+            LinkType::Inline,
+            CowStr::Borrowed(url),
+            CowStr::Borrowed(empty_str),
+        ));
+        events[2] = Event::End(Tag::Image(
+            LinkType::Inline,
+            CowStr::Borrowed(url),
+            CowStr::Borrowed(empty_str),
+        ));
+        events.remove(1);
+        events.push(Event::SoftBreak);
+
+        // for event in events {
+        //     if let Event::Text(ref mut plantuml_text) = event {
+
+        //         *plantuml_text = cow;
+        //         // *plantuml_text = CowStr::Inlined("AAAAAA".to_string());
+        //         // *plantuml_text = CowStr::borrow("AASA");
+        //         // *plantuml_text = render_directory.to_str().unwrap().to_string()
+        //     }
+        // }
+    })
 }
 
 /// Takes the context root of the book and concatinates the build directory.
