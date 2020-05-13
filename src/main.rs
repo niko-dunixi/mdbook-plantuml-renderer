@@ -21,6 +21,7 @@ use crypto::digest::Digest;
 use crypto::sha1::Sha1;
 
 static PLANTUML_RENDERABLE_LANGUAGE: &str = "plantuml,render";
+static RENDER_DIRECTORY_NAME: &str = "plantuml-diagrams";
 
 fn main() -> Result<(), Box<std::error::Error>> {
     fern::Dispatch::new()
@@ -35,23 +36,22 @@ fn main() -> Result<(), Box<std::error::Error>> {
         })
         .level(log::LevelFilter::Debug)
         .chain(stderr())
-        // .chain(fern::log_file("output.log")?)
+        .chain(fern::log_file("plantuml-renderer-output.log")?)
         .apply()?;
 
     let preprocessor = PlantumlRendererPreprocessor::default();
     let matches = get_clap().get_matches();
     if let Some(support_subcommand) = matches.subcommand_matches("supports") {
-        // if let Some(renderer_argument) = support_subcommand.args.get("renderer") {
-        //     // preprocessor.supports_renderer(renderer_argument as String);
-        // }
         return Ok(());
     }
 
+    // let mut buffer = String::new();
+    // stdin().read_to_string(&mut buffer);
+    // let mut f = File::create("foo.txt")?;
+    // write!(f, "{}", buffer);
+
     let (context, book) = CmdPreprocessor::parse_input(stdin())?;
-    // simple_logging::log_to_stderr(LevelFilter::Info);
-
-    info!("PlantUML Preprocessor initiated");
-
+    info!("Initiated");
     let resulting_book = preprocessor.run(&context, book)?;
     serde_json::to_writer(stdout(), &resulting_book)?;
     Ok(())
@@ -82,6 +82,10 @@ impl Preprocessor for PlantumlRendererPreprocessor {
     fn run(&self, context: &PreprocessorContext, mut book: Book) -> Result<Book, Error> {
         let plantuml_build_directory = determine_plantuml_output_directory(&context);
         create_dir_all(&plantuml_build_directory)?;
+        debug!(
+            "Output Directory: {}",
+            &plantuml_build_directory.to_str().unwrap()
+        );
 
         book.for_each_mut(|current_item: &mut BookItem| {
             if let BookItem::Chapter(ref mut current_chapter) = *current_item {
@@ -128,37 +132,46 @@ impl Preprocessor for PlantumlRendererPreprocessor {
                                 "SVG doesn't exist, writing PUML data: {}",
                                 puml_filename.to_str().unwrap()
                             );
+                            create_dir_all(&plantuml_build_directory).unwrap();
                             let mut puml_file = File::create(&puml_filename).unwrap();
-                            write!(puml_file, "{}", plantuml_code);
+                            write!(puml_file, "{}", plantuml_code).unwrap();
+                            drop(puml_file);
                             // Call plantuml and generate the SVG
-                            let output = Command::new("/usr/local/bin/plantuml")
+                            let output = Command::new("plantuml")
                                 .arg("-tsvg")
                                 .arg("-o")
                                 .arg(&plantuml_build_directory.to_str().unwrap())
                                 .arg(&puml_filename.to_str().unwrap())
                                 .output()
                                 .expect("Failed to run PlantUML");
-                            debug!("PlantUML Exit Status: {}", output.status);
-                            debug!(
-                                "PlantUML stdout: {}",
-                                String::from_utf8(output.stdout).unwrap()
-                            );
-                            debug!(
-                                "PlantUML stderr: {}",
-                                String::from_utf8(output.stderr).unwrap()
-                            );
+                            if !output.status.success() {
+                                warn!("PlantUML failure occurred!");
+                                debug!(
+                                    "PlantUML stdout: {}",
+                                    String::from_utf8(output.stdout).unwrap()
+                                );
+                                debug!(
+                                    "PlantUML stderr: {}",
+                                    String::from_utf8(output.stderr).unwrap()
+                                );
+                            }
                         }
                         // Create the relative filename to use, and then place it programatically
                         // as an image to be re-introduced to the mdbook
                         let empty_str = "";
+                        let mut relative_url = PathBuf::new();
+                        relative_url.push(&RENDER_DIRECTORY_NAME);
+                        relative_url.push(&plantuml_hash_sum);
+                        relative_url.set_extension("svg");
+
                         events.push(Event::Start(Tag::Image(
                             LinkType::Inline,
-                            CowStr::Boxed(plantuml_svg_filename.to_str().unwrap().into()),
+                            CowStr::Boxed(relative_url.to_str().unwrap().into()),
                             CowStr::Borrowed(empty_str),
                         )));
                         events.push(Event::End(Tag::Image(
                             LinkType::Inline,
-                            CowStr::Boxed(plantuml_svg_filename.to_str().unwrap().into()),
+                            CowStr::Boxed(relative_url.to_str().unwrap().into()),
                             CowStr::Borrowed(empty_str),
                         )));
                         events.push(Event::SoftBreak);
@@ -203,12 +216,13 @@ fn renderable_plantuml_end(event: &Event<'_>) -> bool {
 /// project root
 fn determine_build_directory(context: &PreprocessorContext) -> PathBuf {
     let mut build_directory = PathBuf::from(&context.root.as_path());
-    build_directory.push(&context.config.build.build_dir);
+    // build_directory.push(&context.config.build.build_dir);
+    build_directory.push("src");
     build_directory
 }
 
 fn determine_plantuml_output_directory(context: &PreprocessorContext) -> PathBuf {
     let mut plantuml_directory = determine_build_directory(context);
-    plantuml_directory.push("plantuml-renderer");
+    plantuml_directory.push(&RENDER_DIRECTORY_NAME);
     plantuml_directory
 }
