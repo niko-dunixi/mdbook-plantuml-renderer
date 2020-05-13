@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
-use log::{debug, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 
 use log::LevelFilter;
 use mdbook::book::{Book, BookItem};
@@ -34,14 +34,18 @@ fn main() -> Result<(), Box<std::error::Error>> {
                 message
             ))
         })
-        .level(log::LevelFilter::Debug)
+        .level(log::LevelFilter::Trace)
         .chain(stderr())
         .chain(fern::log_file("plantuml-renderer-output.log")?)
         .apply()?;
 
     let preprocessor = PlantumlRendererPreprocessor::default();
     let matches = get_clap().get_matches();
-    if let Some(support_subcommand) = matches.subcommand_matches("supports") {
+    if let Some(_support_subcommand) = matches.subcommand_matches("supports") {
+        // if preprocessor.supports_renderer(renderer) {
+        //     return Ok(());
+        // }
+        warn!("We're returning true to all renderers, this hasn't been tested");
         return Ok(());
     }
 
@@ -188,7 +192,11 @@ impl Preprocessor for PlantumlRendererPreprocessor {
         Ok(book)
     }
 
-    fn supports_renderer(&self, _renderer: &str) -> bool {
+    fn supports_renderer(&self, renderer: &str) -> bool {
+        warn!(
+            "Just returning true for all backends. This has been untested with: {}",
+            renderer
+        );
         true
     }
 }
